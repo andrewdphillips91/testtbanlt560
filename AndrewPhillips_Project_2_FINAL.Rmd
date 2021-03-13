@@ -1,0 +1,211 @@
+---
+title: "AndrewPhillips_Project_2_Final"
+author: "Andrew Phillips"
+date: "3/7/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mlbench)
+library(caret)
+library(e1071)
+library(klaR)
+library(nnet)
+library(rpart)
+library(MASS)
+library(randomForest)
+library(caTools)
+```
+
+Since "Bare.nuclei" contains a few missing cells, they will be replaced with 1. The id column will has been removed as it does not contribute to the analysis:
+```{r Dataset Cleaning}
+data("BreastCancer")
+
+
+for (i in 1:length(BreastCancer)[1]) {
+d <- ifelse(sum(is.na(BreastCancer[i]))>5, names(BreastCancer[i]),F)
+ #print(b) 
+print(d)
+}
+str(BreastCancer$Bare.nuclei)
+
+#replace missing values with 1:
+BreastCancer$Bare.nuclei[is.na(BreastCancer$Bare.nuclei)] <- 1
+sum(is.na(BreastCancer$Bare.nuclei))
+
+BreastCancer <- BreastCancer[,-c(1)]
+
+set.seed(100)
+
+spl = sample.split(BreastCancer, SplitRatio = 0.7)
+train = subset(BreastCancer, spl==TRUE)
+test = subset(BreastCancer, spl==FALSE)
+dim(BreastCancer)
+
+print(dim(train)); print(dim(test))
+```
+The overall SVM accuracy is 95.71%:
+```{r svm}
+
+mysvm <- svm(Class ~ ., train)
+mysvm.pred <- predict(mysvm, test)
+
+
+svmcv <- confusionMatrix(factor(mysvm.pred),test$Class)
+svmcv
+
+svmcv_acc <- svmcv$overall['Accuracy'] * 100
+
+anssvmcv <- round(svmcv_acc,2)
+cat(anssvmcv,"% Accuracy")
+```
+The overall NB accuracy is 96.67%:
+```{r Naive Bayes}
+
+mynb <- naiveBayes(Class ~ ., train, laplace = 0)
+mynb.pred <- predict(mynb,test)
+
+nbcv <- confusionMatrix(factor(mynb.pred),test$Class)
+nbcv
+
+nbcv_acc <- nbcv$overall['Accuracy'] * 100
+
+ansnbcv <- round(nbcv_acc,2)
+cat(ansnbcv,"% Accuracy")
+
+```
+The overall neural network accuracy is 90.95%:
+```{r Neural Network}
+
+mynnet <- nnet(Class ~ ., train, size=2)
+mynnet.pred <- predict(mynnet,test,type="class")
+
+nncv <- confusionMatrix(factor(mynnet.pred),test$Class)
+nncv
+
+nncv_acc <- nncv$overall['Accuracy'] * 100
+
+ansnncv <- round(nncv_acc,2)
+cat(ansnncv,"% Accuracy")
+```
+
+The overall decision tree accuracy is 93.33%:
+```{r Decision Trees}
+
+#Decision trees
+
+mytree <- rpart(Class ~ ., train)
+plot(mytree); text(mytree) # in "iris_tree.ps"
+
+mytree.pred <- predict(mytree,test,type="class")
+
+dscv <- confusionMatrix(mytree.pred,test$Class)
+dscv
+
+dscv_acc <- dscv$overall['Accuracy'] * 100
+
+ansdscv <- round(dscv_acc,2)
+cat(ansdscv,"% Accuracy")
+```
+
+The following is the LOOCV. Due to differing lengths, it would not work within the ensemble method. The overall LOOCV accuracy is 93.81%:
+```{r LOOCV}
+# Leave-1-Out Cross Validation (LOOCV)
+
+ans <- numeric(length(test[,1]))
+for (i in 1:length(test[,1])) {
+  mytree <- rpart(Class ~ ., train[-i,])
+  mytree.predloocv <- predict(mytree,test[i,],type="class")
+  ans[i] <- mytree.predloocv
+  }
+str(train$Class)
+
+ans <- factor(ans,labels=levels(test$Class))
+
+loocvcm <- confusionMatrix(ans, test$Class)
+loocvcm
+# The same as above in this case
+loocvcm_acc <- loocvcm$overall['Accuracy'] * 100
+
+ansac <- round(loocvcm_acc,2)
+cat(ansac,"% Accuracy")
+```
+The overall QDA accuracy is 93.81%:
+```{r Quad Disc Analysis}
+#Quadratic Discriminant Analysis
+
+trainqda <- lapply(train,as.numeric)
+testqda <- lapply(test,as.numeric)
+trainqda$Class <- factor(trainqda$Class, labels = c("benign", "malignant"))
+testqda$Class <- factor(testqda$Class, labels=c("benign","malignant"))
+
+myqda <- qda(Class ~ ., trainqda)
+str(BreastCancer)
+myqda.pred <- predict(myqda, testqda)
+table(myqda.pred$class,testqda$Class)
+qdacv <- confusionMatrix(myqda.pred$class, testqda$Class)
+qdacv
+
+qdacv_acc <- qdacv$overall['Accuracy'] * 100
+
+ansqdacv <- round(qdacv_acc,2)
+cat(ansqdacv,"% Accuracy")
+```
+The overall RDA accuracy is 96.67%: 
+```{r Reg Disc Analysis}
+#Regularised Discriminant Analysis
+
+myrda <- rda(Class ~ ., train)
+myrda.pred <- predict(myrda, test)
+
+rdacv <- confusionMatrix(factor(myrda.pred$class), test$Class)
+rdacv
+
+rdacv_acc <- rdacv$overall['Accuracy'] * 100
+
+ansrdacv <- round(rdacv_acc,2)
+cat(ansrdacv,"% Accuracy")
+```
+The overall random forest accuracy is 95.24%:
+```{r Random Forest}
+#Random Forests
+
+myrf <- randomForest(Class ~ ., train)
+myrf.pred <- predict(myrf, test)
+
+rfcv <- confusionMatrix(myrf.pred, test$Class)
+rfcv
+
+rfcv_acc <- rfcv$overall['Accuracy'] * 100
+
+ansrfcv <- round(rfcv_acc,2)
+cat(ansrfcv,"% Accuracy")
+
+```
+
+After stacking the algorithms in a "majority rule" ensemble fashion utilizing the previous algorithms svm, naive bayes, neural network, decision tree, and random forest, the overall accuracy of the ensemble model is 96.67%:
+```{r Stacked Algorithms}
+myrda.pred_s <- myrda.pred$class
+myqda.pred_s <- myqda.pred$class
+stackdf <- data.frame(mysvm.pred,mynb.pred,mynnet.pred,myqda.pred_s,mytree.pred,myrda.pred_s, myrf.pred, Class = test$Class, stringsAsFactors = F)
+
+stvm <- svm(Class ~ ., stackdf)
+
+stvm.pred <- predict(stvm, test)
+
+stcv <- confusionMatrix(stvm.pred, test$Class)
+stcv
+
+stcv_acc <- stcv$overall['Accuracy'] * 100
+
+ansstcv <- round(stcv_acc,2)
+
+stdf <- rbind("SVM Accuracy" = anssvmcv, "Naive Bayes Accuracy" = ansnbcv, "Neural Network Accuracy" = ansnncv, "Decision Tree Accuracy" = ansdscv, "LOOCV Accuracy" = loocvcm_acc, "QDA Accuracy" = ansqdacv, "RDA Accuracy" = ansrdacv, "Random Forest Accuracy" = ansrfcv , "Ensemble Majority Accuracy" = ansstcv)
+stdf
+cat("The overall ensemble Majority model accuracy is",ansstcv,"%")
+```
+
